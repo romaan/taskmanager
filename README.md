@@ -41,3 +41,46 @@ Task Manager
 Plan is to implement backend stack in python3.12+, use FastAPI, asyncio and pytest PLUS also develop a tiny frontend using React framework PLUS also dockerize the applications. So the plan is as follows:
 
 - Setup the repository, git initialize
+- Add requirements, helper scripts and define project structure
+
+
+# Prerequisites 
+- Developed/Tested on linux / macos with bash terminal if you want to run the project locally
+- Python3.12
+- Node 22+
+- Docker installed if building and running with containers
+
+# Assumption
+- CORSMIddleware and allow_origins="*" are set to allow frontend running on different origin to talk to backend, but in PRODUCTION this should be secured further
+
+# How to run locally
+
+## Backend
+
+Initialize the python virtual environment
+
+```sh
+./run.sh init --dev
+```
+
+Run the backend
+
+```sh
+./run.sh dev
+```
+
+App will launch default on [http://localhost:8000](http://localhost:8000) and swagger docs will be available at [http://localhost:8000/docs](http://localhost:8000)
+
+Run the backend tests
+
+```sh
+./run.sh test
+```
+
+## Frontend
+
+TODO
+
+## Docker 
+
+TODO
