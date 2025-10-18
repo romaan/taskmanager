@@ -5,6 +5,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from apps.tasks import api as tasks_api
 from configs import CONFIGS
+from core.logging import setup_logging
+
+# Initialize logging
+setup_logging(level="INFO")
 
 API_TITLE = "Task Management API"
 API_VERSION = "0.1.0"
