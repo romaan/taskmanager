@@ -17,7 +17,7 @@ async def app_lifespan(app: FastAPI):
       - Create and wire core & app singletons
       - Start / stop background services
     """
-    pass
+    yield
 
 
 def setup_routers(app: FastAPI) -> None:
