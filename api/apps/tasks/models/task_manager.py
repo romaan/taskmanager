@@ -2,12 +2,22 @@ import asyncio
 from datetime import datetime, timezone
 
 from apps.tasks.models.task import PARAM_MODELS, TASK_TYPES
-from pydantic import BaseModel, Field, ValidationError, model_validator, PrivateAttr
+from pydantic import (
+    BaseModel,
+    Field,
+    ValidationError,
+    model_validator,
+    PrivateAttr
+)
 from typing import Any, Dict, Literal, Optional, TypedDict
 
 from uuid import UUID
 
-TaskStatusModel = Literal["queued", "processing", "completed", "failed", "cancelled"]
+TaskStatusModel = Literal["queued",
+                          "processing",
+                          "completed",
+                          "failed",
+                          "cancelled"]
 
 
 class TaskModel(BaseModel):

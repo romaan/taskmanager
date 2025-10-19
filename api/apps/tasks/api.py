@@ -104,15 +104,16 @@ async def get_task(
         raise HTTPException(status_code=404, detail="Task not found")
 
     if wait:
-        # If your TaskRecord swaps Events per update, you can snapshot then wait on it.
+        # If your TaskRecord swaps Events per update, you can
+        # snapshot then wait on it.
         event = rec.event
-        if event.is_set():
+        if event.is_set() or rec.info.status in ("processing", "queued"):
             event.clear()
-        try:
-            await asyncio.wait_for(event.wait(), timeout=timeout)
-        except asyncio.TimeoutError:
-            # no change within timeout; just return current state
-            pass
+            try:
+                await asyncio.wait_for(event.wait(), timeout=timeout)
+            except asyncio.TimeoutError:
+                # no change within timeout; just return current state
+                pass
 
         latest = await tm.get(task_uuid)
         if latest:
@@ -213,17 +214,16 @@ async def cancel_task(
         if rec:
             event = rec.event
             # Arm for next change: if already set (because cancel() set it), clear first
-            if event.is_set():
+            if event.is_set() or rec.info.status in ("processing", "queued"):
                 event.clear()
-            try:
-                await asyncio.wait_for(event.wait(), timeout=timeout)
-                latest = await tm.get(info.task_id)
-                if latest:
-                    info = latest.info
-            except asyncio.TimeoutError:
-                # no further change; keep whatever we had (likely "processing")
-                pass
-
+                try:
+                    await asyncio.wait_for(event.wait(), timeout=timeout)
+                    latest = await tm.get(info.task_id)
+                    if latest:
+                        info = latest.info
+                except asyncio.TimeoutError:
+                    # no change within timeout; just return current state
+                    pass
         # Adjust HTTP code based on the state after waiting
         response.status_code = (
             status.HTTP_202_ACCEPTED if info.status == "processing" else status.HTTP_200_OK

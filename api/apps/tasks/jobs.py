@@ -84,11 +84,6 @@ def with_simulated_duration(duration: int = 30, tick: float = 1.0) -> Callable[[
 
 @with_simulated_duration(duration=30, tick=1.0)
 async def compute_sum(*args, **kwargs) -> Union[int, float]:
-    """
-    Sum all the numbers in the "numbers" parameter.
-    :param numbers: list of number
-    :return:
-    """
     numbers = kwargs.get("numbers")
     if not isinstance(numbers, list) or not all(isinstance(n, (int, float)) for n in numbers):
         raise TaskFailedError("Invalid 'numbers' parameter; expected list of numbers.")
