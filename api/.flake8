@@ -1,0 +1,23 @@
+# .flake8 (or put this under [tool.flake8] in pyproject.toml)
+[flake8]
+# PEP 8: 79 for code, 72 for docstrings/comments
+max-line-length = 79
+max-doc-length = 72
+
+# Core PEP 8/logic checks from pycodestyle (E/W) + pyflakes (F)
+select = E,W,F
+
+# PEP 8 recommends breaking BEFORE binary operators; W503 enforces the opposite.
+# Keep W504 (break AFTER) enabled and ignore W503 to align with PEP 8.
+ignore = W503
+
+# Common noise
+per-file-ignores =
+    __init__.py:F401
+
+exclude =
+    .git,
+    __pycache__,
+    .venv,
+    build,
+    dist
