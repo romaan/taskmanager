@@ -1,10 +1,12 @@
 import asyncio
 import logging
-from uuid import uuid4
+from uuid import UUID
 from typing import AsyncGenerator, Optional
 
 from fastapi import APIRouter, Path, Request, Response, Query, HTTPException, status
 from fastapi.responses import StreamingResponse
+
+from apps.tasks.helper import get_task_manager
 from apps.tasks.models.task_manager import (TaskInfoModel, TaskModel, TaskSummaryModel, TaskRecordModel)
 
 logger = logging.getLogger(__name__)
@@ -31,10 +33,17 @@ async def create_task(payload: TaskModel, request: Request) -> TaskSummaryModel:
     Returns 400 Bad Request if validation fails. \r\n
     Returns 503 QueueFull if task queue is full. Try again later. \r\n
     """
+
     task_type = payload.task_type
     priority = getattr(payload, "priority", 0)
 
-    raise HTTPException(status_code=503, detail="Task queue is full. Try again later.")
+    try:
+        tm = get_task_manager(request)
+        info = await tm.submit(task_type, payload.parameters, priority=priority)
+        return TaskSummaryModel(task_id=info.task_id, status=info.status)
+    except QueueFullError as e:
+        logger.warning(f"Task queue is full: {e}")
+        raise HTTPException(status_code=503, detail="Task queue is full. Try again later.")
 
 
 # ----------------------------------------
@@ -57,7 +66,31 @@ async def get_task(
     Optionally, it supports long-polling to wait for a status change before returning
     the response. If the task ID does not exist, an HTTP 404 error is raised.
     """
-    return TaskInfoModel(task_id=uuid4(), status="cancelled", task_type="batch_email", parameters={})
+    try:
+        task_uuid = UUID(task_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    tm = get_task_manager(request)
+    rec: Optional[TaskRecordModel] = await tm.get(task_uuid)
+    if not rec:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    if wait:
+        # If your TaskRecord swaps Events per update, you can snapshot then wait on it.
+        event = rec.event
+        if event.is_set():
+            event.clear()
+        try:
+            await asyncio.wait_for(event.wait(), timeout=timeout)
+        except asyncio.TimeoutError:
+            # no change within timeout; just return current state
+            pass
+
+        latest = await tm.get(task_uuid)
+        if latest:
+            rec = latest
+    return rec.info
 
 
 # -------------------------------
@@ -81,11 +114,12 @@ async def list_tasks(
     Tasks are serialized to JSONL format for efficient streaming and transferred to the client incrementally
     to optimize memory usage.
     """
+    tm = get_task_manager(request)
 
     async def _stream() -> AsyncGenerator[bytes, None]:
         count = 0
         # Snapshot current tasks to avoid holding locks while streaming
-        for rec in list(["value1", "value2"]):  # type: ignore[attr-defined]
+        for rec in list(tm.tasks.values()):  # type: ignore[attr-defined]
             if status_filter and rec.info.status != status_filter:
                 continue
             # Prefer model's .json(); fallback to json.dumps on .dict()
@@ -126,5 +160,47 @@ async def cancel_task(
     - 202 if the task is processing (cancellation requested).
     - 200 if the task was queued and is now cancelled immediately.
     """
+    tm = get_task_manager(request)
 
-    raise HTTPException(status_code=404, detail=str("Task not found"))
+    try:
+        tid = UUID(task_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    try:
+        info = await tm.cancel(tid)
+    except TaskNotCancellableError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    if not info:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    # Default status code before optional wait:
+    response.status_code = (
+        status.HTTP_202_ACCEPTED if info.status == "processing" else status.HTTP_200_OK
+    )
+
+    # Optionally wait for the *next* change (e.g., worker flips to "cancelled")
+    if wait:
+        rec: TaskRecordModel | None = await tm.get(info.task_id)
+        if rec:
+            event = rec.event
+            # Arm for next change: if already set (because cancel() set it), clear first
+            if event.is_set():
+                event.clear()
+            try:
+                await asyncio.wait_for(event.wait(), timeout=timeout)
+                latest = await tm.get(info.task_id)
+                if latest:
+                    info = latest.info
+            except asyncio.TimeoutError:
+                # no further change; keep whatever we had (likely "processing")
+                pass
+
+        # Adjust HTTP code based on the state after waiting
+        response.status_code = (
+            status.HTTP_202_ACCEPTED if info.status == "processing" else status.HTTP_200_OK
+        )
+
+    return info
+

@@ -1,10 +1,13 @@
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from apps.tasks import api as tasks_api
+from apps.tasks.services.rate_limiter import RateLimiter
+from apps.tasks.services.task_manager import TaskManager
 from configs import CONFIGS
+from core.exceptions import register_exception_handlers
 from core.logging import setup_logging
 
 # Initialize logging
@@ -21,7 +24,19 @@ async def app_lifespan(app: FastAPI):
       - Create and wire core & app singletons
       - Start / stop background services
     """
-    yield
+    # --- Core wiring ---
+    app.state.rate_limiter = RateLimiter(max_requests=CONFIGS['MAX_REQUESTS_PER_TIME_PER_IP'], period_seconds=CONFIGS['RATE_LIMIT_PERIOD'])
+
+    # --- Tasks runtime wiring ---
+    app.state.task_manager = TaskManager(max_queue_size=CONFIGS['MAX_TASKS_QUEUE'], concurrency=CONFIGS['CONCURRENCY'], cleanup_after_seconds=CONFIGS['CLEANUP_INTERVAL'])
+
+    # --- Startup ---
+    await app.state.task_manager.start()
+    try:
+        yield   # Run while the server is alive
+    finally:
+        # --- Shutdown ---
+        await app.state.task_manager.stop()
 
 
 def setup_routers(app: FastAPI) -> None:
@@ -34,7 +49,8 @@ def setup_routers(app: FastAPI) -> None:
 
 
 def setup_exceptions(app: FastAPI) -> None:
-    pass
+    # map_validation_to_400=True makes validation errors 400 per your spec
+    register_exception_handlers(app, map_validation_to_400=True)
 
 
 def setup_middleware(app: FastAPI) -> None:
