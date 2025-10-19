@@ -43,7 +43,8 @@ Plan is to implement backend stack in python3.12+, use FastAPI, asyncio and pyte
 - Setup the repository, git initialize
 - Add requirements, helper scripts and define project structure
 - API definition and unit test skeleton added
-- Implement Task Manager
+- Implement Task Manager + Rate Limiter
+- Implement unit tests
 
 # Prerequisites 
 - Developed/Tested on linux / macos with bash terminal if you want to run the project locally

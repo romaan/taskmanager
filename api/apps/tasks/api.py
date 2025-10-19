@@ -1,19 +1,22 @@
 import asyncio
 import logging
-from uuid import UUID
 from typing import AsyncGenerator, Optional
+from uuid import UUID
 
-from fastapi import APIRouter, Path, Request, Response, Query, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status, Path
 from fastapi.responses import StreamingResponse
 
 from apps.tasks.helper import get_task_manager
-from apps.tasks.models.task_manager import (TaskInfoModel, TaskModel, TaskSummaryModel, TaskRecordModel)
+from apps.tasks.models.task_manager import TaskModel, TaskInfoModel, TaskSummaryModel, TaskRecordModel
+from .depends.rate_limit import enforce_rate_limit
+from .exceptions import QueueFullError, TaskNotCancellableError
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/api/v1/tasks",
-    tags=["Tasks"]
+    tags=["Tasks"],
+    dependencies=[Depends(enforce_rate_limit)]
 )
 
 
@@ -142,7 +145,7 @@ async def list_tasks(
     response_model=TaskInfoModel,  # keep response_model
     responses={
         200: {"description": "Task cancelled / not running"},
-        202: {"description": "Cancellation requested (task already running)"},
+        202: {"description": "Cancellation requested"},
         404: {"description": "Task not found"},
     },
 )
@@ -203,4 +206,3 @@ async def cancel_task(
         )
 
     return info
-

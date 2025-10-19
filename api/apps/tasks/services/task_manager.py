@@ -5,26 +5,37 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple
 from uuid import UUID, uuid4
 
-from apps.tasks.exceptions import QueueFullError, TaskFailedError, TaskNotCancellableError, TaskCancellableError
+from apps.tasks.exceptions import (
+    QueueFullError,
+    TaskCancellableError,
+    TaskFailedError,
+    TaskNotCancellableError,
+)
 from apps.tasks.jobs import batch_email, compute_sum, generate_report, lucky_job
-from apps.tasks.models.task_manager import ProgressInfoModel, TaskInfoModel, TaskRecordModel
-
+from apps.tasks.models.task_manager import (
+    ProgressInfoModel,
+    TaskInfoModel,
+    TaskRecordModel,
+)
 
 logger = logging.getLogger(__name__)
 
-# Priority queue item: lower priority runs earlier; seq keeps FIFO within same priority
+# Priority queue item: lower priority runs earlier; seq keeps FIFO within same
+# priority.
 PQItem = Tuple[int, int, UUID]
 
 
-
 class TaskManager:
-
-    def __init__(self,
-                 max_queue_size: int = 100,
-                 concurrency: int = 5,
-                 cleanup_after_seconds: int = 60,
-                 cleanup_sleep_seconds=0.5) -> None:
-        self.queue: asyncio.PriorityQueue[PQItem] = asyncio.PriorityQueue(maxsize=max_queue_size)
+    def __init__(
+        self,
+        max_queue_size: int = 100,
+        concurrency: int = 5,
+        cleanup_after_seconds: int = 60,
+        cleanup_sleep_seconds: float = 0.5,
+    ) -> None:
+        self.queue: asyncio.PriorityQueue[PQItem] = asyncio.PriorityQueue(
+            maxsize=max_queue_size
+        )
         self.tasks: Dict[UUID, TaskRecordModel] = {}
         self.concurrency = concurrency
         self.cleanup_after_seconds = cleanup_after_seconds
@@ -35,13 +46,12 @@ class TaskManager:
         self._seq = 0  # FIFO tiebreaker within same priority
 
     @staticmethod
-    def _generate_uuid():
+    def _generate_uuid() -> UUID:
         return uuid4()
 
     async def start(self) -> None:
         """
-        Start the workers and cleanup task
-        :return:
+        Start the workers and cleanup task.
         """
         logger.info("Starting %d workers", self.concurrency)
         for i in range(self.concurrency):
@@ -50,8 +60,7 @@ class TaskManager:
 
     async def stop(self) -> None:
         """
-        Stop the workers and cleanup task
-        :return:
+        Stop the workers and cleanup task.
         """
         for w in self._workers:
             w.cancel()
@@ -64,13 +73,15 @@ class TaskManager:
             except Exception:
                 pass
 
-    async def submit(self, task_type: str, parameters: Dict[str, Any], priority: int = 0) -> TaskInfoModel:
+    async def submit(
+        self,
+        task_type: str,
+        parameters: Dict[str, Any],
+        priority: int = 0,
+    ) -> TaskInfoModel:
         """
-        Submit a task to the queue. It will be picked up by a worker, put the task in "queued" status
-        :param task_type:
-        :param parameters:
-        :param priority:
-        :return:
+        Submit a task to the queue. It will be picked up by a worker; put the
+        task in "queued" status.
         """
         task_id = self._generate_uuid()
         info = TaskInfoModel(
@@ -79,12 +90,15 @@ class TaskManager:
             task_type=task_type,
             parameters=parameters,
             progress=0,
-            progress_info=ProgressInfoModel(message="Queued", started_at=None, eta_seconds=None)
+            progress_info=ProgressInfoModel(
+                message="Queued", started_at=None, eta_seconds=None
+            ),
         )
+        now = datetime.now(timezone.utc)
         record = TaskRecordModel(
             info=info,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=now,
+            updated_at=now,
         )
 
         # Exclusively lock
@@ -92,20 +106,22 @@ class TaskManager:
             self.tasks[task_id] = record
             self._seq += 1
             seq = self._seq
+
         try:
-            # Lower priority number gets dequeued earlier; seq preserves submission order within same priority
+            # Lower priority number gets dequeued earlier; seq preserves submission
+            # order within same priority.
             self.queue.put_nowait((priority, seq, task_id))
         except asyncio.QueueFull as e:
             async with self._lock:
                 self.tasks.pop(task_id, None)
-            raise QueueFullError(f"Task queue is full (max {self.queue.maxsize})") from e
+            raise QueueFullError(
+                f"Task queue is full (max {self.queue.maxsize})"
+            ) from e
         return info
 
     async def get(self, task_id: UUID) -> Optional[TaskRecordModel]:
         """
         Get the task record by its UUID or return None if not found.
-        :param task_id:
-        :return:
         """
         async with self._lock:
             return self.tasks.get(task_id)
@@ -113,8 +129,6 @@ class TaskManager:
     async def cancel(self, task_id: UUID) -> Optional[TaskInfoModel]:
         """
         Cancel a task. If the task is already terminal, raise an error.
-        :param task_id:
-        :return:
         """
         async with self._lock:
             rec = self.tasks.get(task_id)
@@ -123,7 +137,9 @@ class TaskManager:
 
             # If task is already terminal, raise an error (caller will map to 404)
             if rec.info.status in ("completed", "failed", "cancelled"):
-                raise TaskNotCancellableError(f"Task {task_id} is already {rec.info.status}")
+                raise TaskNotCancellableError(
+                    f"Task {task_id} is already {rec.info.status}"
+                )
 
             rec.cancel_requested = True
 
@@ -135,9 +151,7 @@ class TaskManager:
                 rec.event.set()
                 return rec.info
 
-            # Processing state, we have set rec.cancel_requested = True
-            # Rest will be taken care by with_simulated_duration DURING simulation NOT while actual work
-            # Fallback (shouldn't hit with current statuses)
+            # Processing state; rec.cancel_requested=True and worker will honor it.
             rec.updated_at = datetime.now(timezone.utc)
             rec.event.set()
             return rec.info
@@ -175,25 +189,22 @@ class TaskManager:
                     rec.info.result = result
                     rec.info.progress = 100
                     rec.info.progress_info = (
-                            rec.info.progress_info
-                            or ProgressInfoModel(
-                        message="",
-                        started_at=now_dt,
-                        eta_seconds=None,
-                    )
+                        rec.info.progress_info
+                        or ProgressInfoModel(
+                            message="", started_at=now_dt, eta_seconds=None
+                        )
                     ).model_copy(
-                        update={
-                            "message": "Done",
-                            "eta_seconds": 0,
-                        }
+                        update={"message": "Done", "eta_seconds": 0}
                     )
-                except (asyncio.CancelledError, TaskCancellableError) as e:
+                except (asyncio.CancelledError, TaskCancellableError):
                     rec.info.status = "cancelled"
                 except TaskFailedError as e:
                     rec.info.status = "failed"
                     rec.info.error = str(e)
-                except Exception as e:
-                    logger.exception("Unexpected error processing task %s", task_id)
+                except Exception as e:  # noqa: BLE001 - keep broad catch for worker
+                    logger.exception(
+                        "Unexpected error processing task %s", task_id
+                    )
                     rec.info.status = "failed"
                     rec.info.error = f"Unexpected error: {e}"
                 finally:
@@ -208,7 +219,10 @@ class TaskManager:
             return
 
     async def _process(self, rec: TaskRecordModel) -> Any:
-        """Dispatch to a task-type-specific method. Decorator simulates time + progress."""
+        """
+        Dispatch to a task-type-specific method.
+        Decorator simulates time + progress.
+        """
         match rec.info.task_type:
             case "compute_sum":
                 return await compute_sum(rec)
@@ -226,7 +240,7 @@ class TaskManager:
             while True:
                 await asyncio.sleep(self.cleanup_sleep_seconds)
                 now = datetime.now(timezone.utc)
-                to_delete = []
+                to_delete: list[UUID] = []
                 async with self._lock:
                     for tid, rec in list(self.tasks.items()):
                         if rec.info.status in ("completed", "failed", "cancelled"):

@@ -42,6 +42,9 @@ async def app_lifespan(app: FastAPI):
 def setup_routers(app: FastAPI) -> None:
     """
     Configure and include all application routers.
+
+    Args:
+        app: FastAPI application instance
     """
     app.include_router(
         tasks_api.router,
@@ -67,3 +70,4 @@ app = FastAPI(title=API_TITLE, version=API_VERSION, lifespan=app_lifespan)
 
 setup_middleware(app)
 setup_routers(app)
+setup_exceptions(app)
