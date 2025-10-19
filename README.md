@@ -47,6 +47,7 @@ Plan is to implement backend stack in python3.12+, use FastAPI, asyncio and pyte
 - Implement unit tests
 - Develop UI
 - Build and test Docker containers
+- Rate limiter has logic to clean up memory
 
 # Prerequisites 
 - Developed/Tested on linux / macos with bash terminal if you want to run the project locally
@@ -60,6 +61,7 @@ Plan is to implement backend stack in python3.12+, use FastAPI, asyncio and pyte
 - While estimating the progress, I have assumed that the simulated time will be the major time consuming factor, hence calculating the progress based on simulated time 
 - If simulated time was not a bigger factor, I would try calculating based on the input size and the time required for each atomic computation i.e. for example sum each number etc
 - Added wait=true query param to DELETE task call to wait for the status change optionally, if not the current state is returned when successfully called
+
 
 # How to run locally
 
@@ -115,45 +117,46 @@ docker compose up
 
 # File structure
 
+```
 taskmanager
 ├── api
-│   ├── apps
-│   │   ├── __init__.py
-│   │   └── tasks                                           App specific to TASK-MANAGEMENT
-│   │       ├── __init__.py
-│   │       ├── api.py                                        Routes related to tasks
-│   │       ├── depends                                       Dependencies from routes
-│   │       │   ├── __init__.py
-│   │       │   └── rate_limit.py
-│   │       ├── exceptions.py
-│   │       ├── helper.py
-│   │       ├── jobs.py                                       File with functions like batch_email, compute_sum, etc
-│   │       ├── models                                        Models required for validation and business domains related to tasks
-│   │       │   ├── __init__
-│   │       │   ├── task_manager.py
-│   │       │   └── task.py
-│   │       ├── services                                      Services layer implement the actual logic of task_manager and rate_limiter
-│   │       │   ├── __init__.py
-│   │       │   ├── rate_limiter.py
-│   │       │   └── task_manager.py
-│   │       └── tests                                         All tests related to "tasks" sub-application
-│   │           ├── __init__.py
-│   │           ├── test_delete_api.py
-│   │           ├── test_get_task_api.py
-│   │           ├── test_list_tasks_api.py
-│   │           ├── test_post_task_api.py
-│   │           ├── test_rate_limiter.py
-│   │           └── test_task_manager.py
-│   ├── configs.py                                            External configuration
-│   ├── core
-│   │   ├── __init__.py
-│   │   ├── exceptions.py
-│   │   └── logging.py
-│   ├── Dockerfile
-│   ├── main.py                                                Main file, entry point to start the web application
-│   ├── requirements-dev.txt                                   Development requirements
-│   ├── requirements.txt                                       Minimal packages required
-│   └── run.sh
+├── apps
+├── __init__.py
+└── tasks                                           App specific to TASK-MANAGEMENT
+    ├── __init__.py
+    ├── api.py                                        Routes related to tasks
+    ├── depends                                       Dependencies from routes
+    ├── __init__.py
+    └── rate_limit.py
+    ├── exceptions.py
+    ├── helper.py
+    ├── jobs.py                                       File with functions like batch_email, compute_sum, etc
+    ├── models                                        Models required for validation and business domains related to tasks
+    ├── __init__
+    ├── task_manager.py
+    └── task.py
+    ├── services                                      Services layer implement the actual logic of task_manager and rate_limiter
+    ├── __init__.py
+    ├── rate_limiter.py
+    └── task_manager.py
+    └── tests                                         All tests related to "tasks" sub-application
+        ├── __init__.py
+        ├── test_delete_api.py
+        ├── test_get_task_api.py
+        ├── test_list_tasks_api.py
+        ├── test_post_task_api.py
+        ├── test_rate_limiter.py
+        └── test_task_manager.py
+├── configs.py                                            External configuration
+├── core
+├── __init__.py
+├── exceptions.py
+└── logging.py
+├── Dockerfile
+├── main.py                                                Main file, entry point to start the web application
+├── requirements-dev.txt                                   Development requirements
+├── requirements.txt                                       Minimal packages required
+└── run.sh
 ├── docker-compose.yml
 ├── README.md
 ├── screenshots
@@ -163,16 +166,16 @@ taskmanager
     ├── package-lock.json
     ├── package.json
     ├── src
-    │   ├── api.ts
-    │   ├── App.tsx
-    │   ├── components
-    │   │   ├── TaskForm.tsx
-    │   │   └── TaskList.tsx
-    │   ├── main.tsx
-    │   ├── styles.css
-    │   └── vite-env.d.ts
+        ├── api.ts
+        ├── App.tsx
+        ├── components
+            ├── TaskForm.tsx
+            └── TaskList.tsx
+    ├── main.tsx
+    ├── styles.css
+    └── vite-env.d.ts
     └── tsconfig.json
-
+```
 
 # Future scope 
 
@@ -195,3 +198,5 @@ taskmanager
 ![Tests](./screenshots/test.png)
 
 ## Docker containers and logs
+
+![Docker](./screenshots/docker.png)

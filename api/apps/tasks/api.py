@@ -3,11 +3,25 @@ import logging
 from typing import AsyncGenerator, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status, Path
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    status,
+    Path,
+)
 from fastapi.responses import StreamingResponse
 
 from apps.tasks.helper import get_task_manager
-from apps.tasks.models.task_manager import TaskModel, TaskInfoModel, TaskSummaryModel, TaskRecordModel
+from apps.tasks.models.task_manager import (
+    TaskModel,
+    TaskInfoModel,
+    TaskSummaryModel,
+    TaskRecordModel,
+)
 from .depends.rate_limit import enforce_rate_limit
 from .exceptions import QueueFullError, TaskNotCancellableError
 
@@ -28,7 +42,10 @@ router = APIRouter(
     status_code=status.HTTP_202_ACCEPTED,
     response_model=TaskSummaryModel,
 )
-async def create_task(payload: TaskModel, request: Request) -> TaskSummaryModel:
+async def create_task(
+    payload: TaskModel,
+    request: Request,
+) -> TaskSummaryModel:
     """
     Submit a task. \r\n
     Validation is handled by Pydantic before this runs.
@@ -42,7 +59,8 @@ async def create_task(payload: TaskModel, request: Request) -> TaskSummaryModel:
 
     try:
         tm = get_task_manager(request)
-        info = await tm.submit(task_type, payload.parameters, priority=priority)
+        info = await tm.submit(task_type, payload.parameters,
+                               priority=priority)
         return TaskSummaryModel(task_id=info.task_id, status=info.status)
     except QueueFullError as e:
         logger.warning(f"Task queue is full: {e}")
@@ -59,15 +77,21 @@ async def create_task(payload: TaskModel, request: Request) -> TaskSummaryModel:
 async def get_task(
     task_id: str,
     request: Request,
-    wait: bool = Query(False, description="Enable long-poll, wait for a status change"),
-    timeout: int = Query(10, ge=1, le=60, description="Long-poll timeout in seconds"),
+    wait: bool = Query(
+        False, description="Enable long-poll, wait for a status change"
+    ),
+    timeout: int = Query(
+        10, ge=1, le=60, description="Long-poll timeout in seconds"
+    ),
 ) -> TaskInfoModel:
     """
     Retrieve information about a task by its ID. \r\n
 
-    This endpoint fetches the status and details of a task using its unique identifier.
-    Optionally, it supports long-polling to wait for a status change before returning
-    the response. If the task ID does not exist, an HTTP 404 error is raised.
+    This endpoint fetches the status and details of a task using its
+    unique identifier.
+    Optionally, it supports long-polling to wait for a status
+    change before returning the response. If the task ID does not exist, an
+    HTTP 404 error is raised.
     """
     try:
         task_uuid = UUID(task_id)
@@ -142,7 +166,7 @@ async def list_tasks(
 
 @router.delete(
     "/{task_id}",
-    response_model=TaskInfoModel,  # keep response_model
+    response_model=TaskInfoModel,
     responses={
         200: {"description": "Task cancelled / not running"},
         202: {"description": "Cancellation requested"},

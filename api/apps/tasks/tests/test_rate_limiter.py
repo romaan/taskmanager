@@ -1,5 +1,7 @@
 import asyncio
+import time
 from typing import List
+from collections import deque
 
 import pytest
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -20,26 +22,6 @@ async def test_allow_within_limit():
 
 
 @pytest.mark.asyncio
-async def test_remaining_and_window_expiry():
-    # Use a short window so the test runs fast and stable
-    rl = RateLimiter(max_requests=2, period_seconds=1)
-    key = "user:2"
-
-    # Initially 2 remaining
-    assert await rl.remaining(key) == 2
-    assert await rl.allow(key) is True
-    assert await rl.remaining(key) == 1
-    assert await rl.allow(key) is True
-    assert await rl.remaining(key) == 0
-    assert await rl.allow(key) is False
-
-    # After the window passes, counters should roll off
-    await asyncio.sleep(1)
-    assert await rl.allow(key) is True
-    assert await rl.remaining(key) == 1
-
-
-@pytest.mark.asyncio
 async def test_isolated_per_key():
     rl = RateLimiter(max_requests=1, period_seconds=60)
     a, b = "A", "B"
@@ -48,29 +30,6 @@ async def test_isolated_per_key():
     assert await rl.allow(a) is True
     assert await rl.allow(a) is False
     assert await rl.allow(b) is True
-
-
-@pytest.mark.asyncio
-async def test_reset_key_and_reset_all():
-    rl = RateLimiter(max_requests=2, period_seconds=60)
-    k1, k2 = "K1", "K2"
-
-    await rl.allow(k1)
-    await rl.allow(k2)
-    await rl.allow(k2)
-    assert await rl.remaining(k1) == 1
-    assert await rl.remaining(k2) == 0
-
-    # Reset K2 only
-    await rl.reset(k2)
-    assert await rl.remaining(k2) == 2
-    # K1 unchanged
-    assert await rl.remaining(k1) == 1
-
-    # Reset all
-    await rl.reset()
-    assert await rl.remaining(k1) == 2
-    assert await rl.remaining(k2) == 2
 
 
 @pytest.mark.asyncio
@@ -88,8 +47,6 @@ async def test_concurrent_allow_respects_limit():
     results: List[bool] = await asyncio.gather(*(try_once() for _ in range(20)))
     assert sum(results) == 5
     assert results.count(False) == 15
-    # Remaining should be 0
-    assert await rl.remaining(key) == 0
 
 
 @pytest.fixture
@@ -122,3 +79,80 @@ def test_fastapi_integration_rate_limit(client: TestClient):
     r3 = client.get("/ping")
     assert r3.status_code == 429
     assert r3.json()["detail"] == "Too Many Requests"
+
+
+@pytest.mark.asyncio
+async def test_cleanup_once_prunes_old_timestamps_and_empty_buckets():
+    rl = RateLimiter(max_requests=10, period_seconds=1.0)
+    now = time.monotonic()
+
+    # 'old' completely expired -> bucket should be deleted
+    rl._buckets["old"] = deque([now - 5.0, now - 2.0])
+
+    # 'mixed' has some expired and some fresh -> only fresh should remain
+    rl._buckets["mixed"] = deque([now - 2.0, now - 0.2])
+
+    # 'fresh' entirely within window -> should be untouched
+    rl._buckets["fresh"] = deque([now - 0.1, now - 0.05])
+
+    await rl._cleanup_once()
+
+    # 'old' removed entirely
+    assert "old" not in rl._buckets
+
+    # 'mixed' pruned to only non-expired items
+    assert "mixed" in rl._buckets
+    assert len(rl._buckets["mixed"]) == 1
+    assert rl._buckets["mixed"][0] >= time.monotonic() - rl.period_seconds
+
+    # 'fresh' stays
+    assert "fresh" in rl._buckets
+    assert len(rl._buckets["fresh"]) == 2
+    assert all(ts >= time.monotonic() - rl.period_seconds for ts in rl._buckets["fresh"])
+
+
+@pytest.mark.asyncio
+async def test_allow_after_cleanup_allows_again():
+    rl = RateLimiter(max_requests=1, period_seconds=0.1)
+    key = "reset"
+
+    # Consume the single slot
+    assert await rl.allow(key) is True
+    assert await rl.allow(key) is False
+
+    # Age the timestamp to beyond the window and run one-off cleanup
+    async with rl._lock:
+        dq = rl._buckets[key]
+        dq[0] = time.monotonic() - rl.period_seconds - 0.01
+
+    await rl._cleanup_once()
+
+    # Slot should be free again
+    assert await rl.allow(key) is True
+
+
+@pytest.mark.asyncio
+async def test_background_cleanup_removes_expired_and_can_stop():
+    # Very short periods so the test runs quickly
+    rl = RateLimiter(max_requests=1, period_seconds=0.05, cleanup_interval=0.02)
+    key = "bg"
+
+    # Use up the slot
+    assert await rl.allow(key) is True
+    assert await rl.allow(key) is False
+
+    # Age the entry so cleanup should remove it
+    async with rl._lock:
+        dq = rl._buckets[key]
+        dq[0] = time.monotonic() - rl.period_seconds - 0.01
+
+    # Start background cleanup and give it a moment to run
+    await rl.start_cleanup()
+    await asyncio.sleep(0.06)  # > cleanup_interval and roughly > one period
+
+    # Should be allowed again because background cleanup pruned it
+    assert await rl.allow(key) is True
+
+    # Stop background task cleanly
+    await rl.stop_cleanup()
+    assert rl._cleanup_task is None

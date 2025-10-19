@@ -66,19 +66,3 @@ class RateLimiter:
                 return False
             dq.append(now)
             return True
-
-    async def remaining(self, key: str) -> int:
-        now = time.monotonic()
-        cutoff = now - self.period_seconds
-        async with self._lock:
-            dq = self._buckets.get(key, deque())
-            while dq and dq[0] < cutoff:
-                dq.popleft()
-            return max(0, self.max_requests - len(dq))
-
-    async def reset(self, key: Optional[str] = None) -> None:
-        async with self._lock:
-            if key is None:
-                self._buckets.clear()
-            else:
-                self._buckets.pop(key, None)
