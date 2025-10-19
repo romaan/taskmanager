@@ -25,18 +25,35 @@ async def app_lifespan(app: FastAPI):
       - Start / stop background services
     """
     # --- Core wiring ---
-    app.state.rate_limiter = RateLimiter(max_requests=CONFIGS['MAX_REQUESTS_PER_TIME_PER_IP'], period_seconds=CONFIGS['RATE_LIMIT_PERIOD'])
+    app.state.rate_limiter = RateLimiter(
+        max_requests=CONFIGS['MAX_REQUESTS_PER_TIME_PER_IP'],
+        period_seconds=CONFIGS['RATE_LIMIT_PERIOD'],
+        cleanup_interval=CONFIGS.get('RATE_LIMIT_CLEANUP_INTERVAL', 300),
+    )
 
     # --- Tasks runtime wiring ---
-    app.state.task_manager = TaskManager(max_queue_size=CONFIGS['MAX_TASKS_QUEUE'], concurrency=CONFIGS['CONCURRENCY'], cleanup_after_seconds=CONFIGS['CLEANUP_INTERVAL'])
+    app.state.task_manager = TaskManager(
+        max_queue_size=CONFIGS['MAX_TASKS_QUEUE'],
+        concurrency=CONFIGS['CONCURRENCY'],
+        cleanup_after_seconds=CONFIGS['CLEANUP_INTERVAL'],
+    )
 
     # --- Startup ---
+    await app.state.rate_limiter.start_cleanup()
     await app.state.task_manager.start()
+
     try:
-        yield   # Run while the server is alive
+        yield  # Run while the server is alive
     finally:
-        # --- Shutdown ---
+        # --- Shutdown (reverse startup order) ---
+        # Stop the task manager first if it may still enqueue requests
         await app.state.task_manager.stop()
+        # Then stop the rate limiter's cleanup loop
+        try:
+            await app.state.rate_limiter.stop_cleanup()
+        except Exception:
+            # Be defensive during shutdown; don't block app teardown
+            pass
 
 
 def setup_routers(app: FastAPI) -> None:
