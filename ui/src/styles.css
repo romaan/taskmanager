@@ -1,0 +1,53 @@
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background: #0b1220;
+  color: #e6eef9;
+}
+
+.card {
+  background: #131a2a;
+  border: 1px solid #223;
+}
+
+.form-control, .form-select {
+  background: #0f1626;
+  color: #e6eef9;
+  border-color: #223;
+}
+
+.form-control::placeholder { color: #9fb0c9; }
+
+.table { color: #e6eef9; }
+.table thead th { border-color: #223; }
+.table tbody td { border-color: #1a2236; }
+
+.progress { background: #1a2236; height: 8px; }
+.progress-bar { background: #4cc9f0; }
+
+.small-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px; color: #9fb0c9;
+}
+
+.card-title,
+.form-label,
+h5,
+h4,
+h3,
+h2,
+h1 {
+  color: #ffffff !important;
+}
+
+/* Optional: tweak placeholder and helper text contrast */
+.form-text {
+  color: #b8c4dc;
+}
+
+.form-control::placeholder {
+  color: #a8b6cc;
+}
+If you want
