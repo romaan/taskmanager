@@ -45,6 +45,8 @@ Plan is to implement backend stack in python3.12+, use FastAPI, asyncio and pyte
 - API definition and unit test skeleton added
 - Implement Task Manager + Rate Limiter
 - Implement unit tests
+- Develop UI
+- Build and test Docker containers
 
 # Prerequisites 
 - Developed/Tested on linux / macos with bash terminal if you want to run the project locally
@@ -54,6 +56,10 @@ Plan is to implement backend stack in python3.12+, use FastAPI, asyncio and pyte
 
 # Assumption
 - CORSMIddleware and allow_origins="*" are set to allow frontend running on different origin to talk to backend, but in PRODUCTION this should be secured further
+- Using pydantic[email] validator, pytest-timeout and flake8. Using flake8 for linting to meet PEP8
+- While estimating the progress, I have assumed that the simulated time will be the major time consuming factor, hence calculating the progress based on simulated time 
+- If simulated time was not a bigger factor, I would try calculating based on the input size and the time required for each atomic computation i.e. for example sum each number etc
+- Added wait=true query param to DELETE task call to wait for the status change optionally, if not the current state is returned when successfully called
 
 # How to run locally
 
@@ -62,12 +68,14 @@ Plan is to implement backend stack in python3.12+, use FastAPI, asyncio and pyte
 Initialize the python virtual environment
 
 ```sh
+cd api
 ./run.sh init --dev
 ```
 
 Run the backend
 
 ```sh
+cd api
 ./run.sh dev
 ```
 
@@ -76,13 +84,114 @@ App will launch default on [http://localhost:8000](http://localhost:8000) and sw
 Run the backend tests
 
 ```sh
+cd api
 ./run.sh test
 ```
 
 ## Frontend
 
-TODO
+A lightweight UI for your FastAPI async task manager:
+- Create tasks (`compute_sum`, `generate_report`, `batch_email`, `unstable_task`)
+- List tasks (streams JSONL or falls back to plain list)
+- Long-poll a single task for updates
+- Cancel queued/processing tasks
+
+Bare minimal functionality has been developed using typescript, and react library. Also uses Bootstrap CDN. In order to run below are the steps:
+
+```sh
+cd ui
+npm install 
+npm run dev
+```
 
 ## Docker 
 
-TODO
+Build and run the docker containers
+
+```sh
+docker compose build
+docker compose up
+```
+
+# File structure
+
+taskmanager
+├── api
+│   ├── apps
+│   │   ├── __init__.py
+│   │   └── tasks                                           App specific to TASK-MANAGEMENT
+│   │       ├── __init__.py
+│   │       ├── api.py                                        Routes related to tasks
+│   │       ├── depends                                       Dependencies from routes
+│   │       │   ├── __init__.py
+│   │       │   └── rate_limit.py
+│   │       ├── exceptions.py
+│   │       ├── helper.py
+│   │       ├── jobs.py                                       File with functions like batch_email, compute_sum, etc
+│   │       ├── models                                        Models required for validation and business domains related to tasks
+│   │       │   ├── __init__
+│   │       │   ├── task_manager.py
+│   │       │   └── task.py
+│   │       ├── services                                      Services layer implement the actual logic of task_manager and rate_limiter
+│   │       │   ├── __init__.py
+│   │       │   ├── rate_limiter.py
+│   │       │   └── task_manager.py
+│   │       └── tests                                         All tests related to "tasks" sub-application
+│   │           ├── __init__.py
+│   │           ├── test_delete_api.py
+│   │           ├── test_get_task_api.py
+│   │           ├── test_list_tasks_api.py
+│   │           ├── test_post_task_api.py
+│   │           ├── test_rate_limiter.py
+│   │           └── test_task_manager.py
+│   ├── configs.py                                            External configuration
+│   ├── core
+│   │   ├── __init__.py
+│   │   ├── exceptions.py
+│   │   └── logging.py
+│   ├── Dockerfile
+│   ├── main.py                                                Main file, entry point to start the web application
+│   ├── requirements-dev.txt                                   Development requirements
+│   ├── requirements.txt                                       Minimal packages required
+│   └── run.sh
+├── docker-compose.yml
+├── README.md
+├── screenshots
+└── ui                                                        Task Manager User Interface developed in TypeScript and ReactJS library
+    ├── Dockerfile
+    ├── index.html
+    ├── package-lock.json
+    ├── package.json
+    ├── src
+    │   ├── api.ts
+    │   ├── App.tsx
+    │   ├── components
+    │   │   ├── TaskForm.tsx
+    │   │   └── TaskList.tsx
+    │   ├── main.tsx
+    │   ├── styles.css
+    │   └── vite-env.d.ts
+    └── tsconfig.json
+
+
+# Future scope 
+
+- User authentication 
+
+# Screenshots
+
+## API Documentation - Swagger Doc
+
+![Swagger](./screenshots/swagger.png)
+
+
+## User Implementation
+
+![Web UI](./screenshots/UI.png)
+
+
+## Test Cases 
+
+![Tests](./screenshots/test.png)
+
+## Docker containers and logs
